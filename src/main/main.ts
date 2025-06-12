@@ -1,5 +1,6 @@
-import { app, BrowserWindow, Menu, ipcMain } from 'electron'
+import { app, BrowserWindow, Menu, ipcMain, dialog } from 'electron'
 import { join } from 'path'
+import { promises as fs } from 'fs'
 import { isDev } from './utils'
 
 let mainWindow: BrowserWindow | null = null
@@ -129,4 +130,127 @@ ipcMain.on('window-maximize', () => {
   } else {
     mainWindow?.maximize()
   }
+})
+
+// ファイル操作ハンドラー
+ipcMain.handle('file-open', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'Text Files', extensions: ['txt', 'md', 'js', 'ts', 'jsx', 'tsx', 'json', 'css', 'html', 'py', 'java', 'cpp', 'c', 'h'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  })
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null
+  }
+
+  try {
+    const filePath = result.filePaths[0]
+    const content = await fs.readFile(filePath, 'utf-8')
+    const fileName = join(filePath).split('/').pop() || 'untitled'
+    
+    return {
+      content,
+      filePath,
+      fileName
+    }
+  } catch (error) {
+    console.error('Error reading file:', error)
+    return null
+  }
+})
+
+ipcMain.handle('file-save', async (event, content: string, filePath?: string) => {
+  try {
+    if (filePath) {
+      await fs.writeFile(filePath, content, 'utf-8')
+      return filePath
+    } else {
+      const result = await dialog.showSaveDialog(mainWindow!, {
+        filters: [
+          { name: 'Text Files', extensions: ['txt'] },
+          { name: 'JavaScript', extensions: ['js'] },
+          { name: 'TypeScript', extensions: ['ts'] },
+          { name: 'React', extensions: ['jsx', 'tsx'] },
+          { name: 'JSON', extensions: ['json'] },
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      })
+
+      if (result.canceled || !result.filePath) {
+        return null
+      }
+
+      await fs.writeFile(result.filePath, content, 'utf-8')
+      return result.filePath
+    }
+  } catch (error) {
+    console.error('Error saving file:', error)
+    return null
+  }
+})
+
+ipcMain.handle('file-save-as', async (event, content: string) => {
+  try {
+    const result = await dialog.showSaveDialog(mainWindow!, {
+      filters: [
+        { name: 'Text Files', extensions: ['txt'] },
+        { name: 'JavaScript', extensions: ['js'] },
+        { name: 'TypeScript', extensions: ['ts'] },
+        { name: 'React', extensions: ['jsx', 'tsx'] },
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+
+    if (result.canceled || !result.filePath) {
+      return null
+    }
+
+    await fs.writeFile(result.filePath, content, 'utf-8')
+    return result.filePath
+  } catch (error) {
+    console.error('Error saving file:', error)
+    return null
+  }
+})
+
+ipcMain.handle('file-new', () => {
+  if (mainWindow) {
+    mainWindow.webContents.send('menu-new-file')
+  }
+})
+
+// ダイアログハンドラー
+ipcMain.handle('dialog-save', async (event, defaultPath?: string) => {
+  const result = await dialog.showSaveDialog(mainWindow!, {
+    defaultPath,
+    filters: [
+      { name: 'Text Files', extensions: ['txt'] },
+      { name: 'JavaScript', extensions: ['js'] },
+      { name: 'TypeScript', extensions: ['ts'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  })
+  
+  return result.canceled ? null : result.filePath
+})
+
+ipcMain.handle('dialog-open', async () => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'Text Files', extensions: ['txt', 'md', 'js', 'ts', 'jsx', 'tsx', 'json'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  })
+  
+  return result.canceled ? null : result.filePaths
+})
+
+ipcMain.handle('dialog-message', async (event, options) => {
+  const result = await dialog.showMessageBox(mainWindow!, options)
+  return result.response
 })
