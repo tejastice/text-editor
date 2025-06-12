@@ -7,7 +7,8 @@
     "rootDir": ".",
     "noEmit": false,
     "jsx": "preserve",
-    "lib": ["ES2020"]
+    "lib": ["ES2020"],
+    "composite": true
   },
   "include": [
     "./**/*"
