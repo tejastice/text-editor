@@ -1,57 +1,32 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useEffect, useCallback } from 'react'
 import MonacoEditor from './components/MonacoEditor'
-
-interface FileTab {
-  id: string
-  fileName: string
-  filePath?: string
-  content: string
-  isDirty: boolean
-  language: string
-}
+import { useEditorStore } from '../store/editorStore'
+import type { FileTab } from '../store/editorStore'
 
 const App: React.FC = () => {
-  const [theme, setTheme] = useState<'light' | 'dark'>('dark')
-  const [tabs, setTabs] = useState<FileTab[]>([
-    {
-      id: 'welcome',
-      fileName: 'Welcome.ts',
-      content: '// Welcome to Mac Text Editor\n// Start typing your code here...\n\nfunction hello() {\n  console.log("Hello, World!");\n}',
-      isDirty: false,
-      language: 'typescript'
-    }
-  ])
-  const [activeTabId, setActiveTabId] = useState('welcome')
+  const {
+    tabs,
+    activeTabId,
+    settings,
+    addTab,
+    removeTab,
+    setActiveTab,
+    updateTabContent,
+    updateTabLanguage,
+    updateTabFile,
+    toggleTheme,
+    updateSettings,
+    getActiveTab,
+    generateTabId
+  } = useEditorStore()
 
-  const activeTab = tabs.find(tab => tab.id === activeTabId)
-
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
-  }
-
-  const generateTabId = () => Math.random().toString(36).substr(2, 9)
-
-  const updateTabContent = (tabId: string, content: string) => {
-    setTabs(prev => prev.map(tab => 
-      tab.id === tabId 
-        ? { ...tab, content, isDirty: true }
-        : tab
-    ))
-  }
-
-  const updateTabLanguage = (tabId: string, language: string) => {
-    setTabs(prev => prev.map(tab => 
-      tab.id === tabId 
-        ? { ...tab, language }
-        : tab
-    ))
-  }
+  const activeTab = getActiveTab()
 
   const handleContentChange = useCallback((value: string | undefined) => {
     if (activeTabId) {
       updateTabContent(activeTabId, value || '')
     }
-  }, [activeTabId])
+  }, [activeTabId, updateTabContent])
 
   const handleNewFile = () => {
     const newTab: FileTab = {
@@ -61,8 +36,7 @@ const App: React.FC = () => {
       isDirty: false,
       language: 'text'
     }
-    setTabs(prev => [...prev, newTab])
-    setActiveTabId(newTab.id)
+    addTab(newTab)
   }
 
   const handleOpenFile = async () => {
@@ -77,8 +51,7 @@ const App: React.FC = () => {
           isDirty: false,
           language: getLanguageFromFileName(fileData.fileName)
         }
-        setTabs(prev => [...prev, newTab])
-        setActiveTabId(newTab.id)
+        addTab(newTab)
       }
     } catch (error) {
       console.error('Error opening file:', error)
@@ -86,16 +59,13 @@ const App: React.FC = () => {
   }
 
   const handleSaveFile = async () => {
-    if (!activeTab) return
+    if (!activeTab || !activeTabId) return
     
     try {
       const filePath = await window.electronAPI?.saveFile(activeTab.content, activeTab.filePath)
       if (filePath) {
-        setTabs(prev => prev.map(tab => 
-          tab.id === activeTabId 
-            ? { ...tab, filePath, isDirty: false, fileName: filePath.split('/').pop() || tab.fileName }
-            : tab
-        ))
+        const fileName = filePath.split('/').pop() || activeTab.fileName
+        updateTabFile(activeTabId, filePath, fileName)
       }
     } catch (error) {
       console.error('Error saving file:', error)
@@ -103,16 +73,13 @@ const App: React.FC = () => {
   }
 
   const handleSaveAsFile = async () => {
-    if (!activeTab) return
+    if (!activeTab || !activeTabId) return
     
     try {
       const filePath = await window.electronAPI?.saveAsFile(activeTab.content)
       if (filePath) {
-        setTabs(prev => prev.map(tab => 
-          tab.id === activeTabId 
-            ? { ...tab, filePath, isDirty: false, fileName: filePath.split('/').pop() || tab.fileName }
-            : tab
-        ))
+        const fileName = filePath.split('/').pop() || activeTab.fileName
+        updateTabFile(activeTabId, filePath, fileName)
       }
     } catch (error) {
       console.error('Error saving file as:', error)
@@ -122,24 +89,9 @@ const App: React.FC = () => {
   const closeTab = (tabId: string) => {
     const tabToClose = tabs.find(tab => tab.id === tabId)
     if (tabToClose?.isDirty) {
-      // TODO: Show confirmation dialog
+      // TODO: Show confirmation dialog using electronAPI
     }
-    
-    setTabs(prev => {
-      const newTabs = prev.filter(tab => tab.id !== tabId)
-      if (newTabs.length === 0) {
-        handleNewFile()
-        return newTabs
-      }
-      return newTabs
-    })
-    
-    if (activeTabId === tabId) {
-      const remainingTabs = tabs.filter(tab => tab.id !== tabId)
-      if (remainingTabs.length > 0) {
-        setActiveTabId(remainingTabs[0].id)
-      }
-    }
+    removeTab(tabId)
   }
 
   const getLanguageFromFileName = (fileName: string): string => {
@@ -215,17 +167,17 @@ const App: React.FC = () => {
   }, [activeTab, activeTabId])
 
   return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}`}>
+    <div className={`min-h-screen ${settings.theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'}`}>
       <div className="flex flex-col h-screen">
         {/* Header */}
-        <header className={`${theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-gray-100 border-gray-300'} p-4 border-b`}>
+        <header className={`${settings.theme === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-gray-100 border-gray-300'} p-4 border-b`}>
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-semibold">Mac Text Editor</h1>
             <div className="flex items-center gap-4">
               <button
                 onClick={handleNewFile}
                 className={`px-3 py-1 rounded border text-sm ${
-                  theme === 'dark'
+                  settings.theme === 'dark'
                     ? 'bg-gray-700 border-gray-600 hover:bg-gray-600 text-white'
                     : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-900'
                 }`}
@@ -235,7 +187,7 @@ const App: React.FC = () => {
               <button
                 onClick={handleOpenFile}
                 className={`px-3 py-1 rounded border text-sm ${
-                  theme === 'dark'
+                  settings.theme === 'dark'
                     ? 'bg-gray-700 border-gray-600 hover:bg-gray-600 text-white'
                     : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-900'
                 }`}
@@ -245,19 +197,19 @@ const App: React.FC = () => {
               <button
                 onClick={handleSaveFile}
                 className={`px-3 py-1 rounded border text-sm ${
-                  theme === 'dark'
+                  settings.theme === 'dark'
                     ? 'bg-gray-700 border-gray-600 hover:bg-gray-600 text-white'
                     : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-900'
                 }`}
               >
                 Save
               </button>
-              {activeTab && (
+              {activeTab && activeTabId && (
                 <select
                   value={activeTab.language}
                   onChange={(e) => updateTabLanguage(activeTabId, e.target.value)}
                   className={`px-3 py-1 rounded border text-sm ${
-                    theme === 'dark' 
+                    settings.theme === 'dark' 
                       ? 'bg-gray-700 border-gray-600 text-white' 
                       : 'bg-white border-gray-300 text-gray-900'
                   }`}
@@ -275,33 +227,33 @@ const App: React.FC = () => {
               <button
                 onClick={toggleTheme}
                 className={`px-4 py-1 rounded border ${
-                  theme === 'dark'
+                  settings.theme === 'dark'
                     ? 'bg-gray-700 border-gray-600 hover:bg-gray-600 text-white'
                     : 'bg-white border-gray-300 hover:bg-gray-50 text-gray-900'
                 }`}
               >
-                {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+                {settings.theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
               </button>
             </div>
           </div>
         </header>
 
         {/* Tab Bar */}
-        <div className={`${theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-gray-200 border-gray-300'} border-b`}>
+        <div className={`${settings.theme === 'dark' ? 'bg-gray-700 border-gray-600' : 'bg-gray-200 border-gray-300'} border-b`}>
           <div className="flex overflow-x-auto">
             {tabs.map((tab) => (
               <div
                 key={tab.id}
                 className={`flex items-center px-4 py-2 border-r cursor-pointer min-w-0 ${
                   tab.id === activeTabId
-                    ? theme === 'dark' 
+                    ? settings.theme === 'dark' 
                       ? 'bg-gray-800 border-gray-600 text-white' 
                       : 'bg-white border-gray-300 text-gray-900'
-                    : theme === 'dark'
+                    : settings.theme === 'dark'
                       ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
                       : 'bg-gray-200 border-gray-300 text-gray-700 hover:bg-gray-100'
-                } ${theme === 'dark' ? 'border-gray-600' : 'border-gray-300'}`}
-                onClick={() => setActiveTabId(tab.id)}
+                } ${settings.theme === 'dark' ? 'border-gray-600' : 'border-gray-300'}`}
+                onClick={() => setActiveTab(tab.id)}
               >
                 <span className="truncate text-sm">
                   {tab.fileName}
@@ -313,7 +265,7 @@ const App: React.FC = () => {
                     closeTab(tab.id)
                   }}
                   className={`ml-2 w-4 h-4 rounded-full text-xs flex items-center justify-center ${
-                    theme === 'dark' 
+                    settings.theme === 'dark' 
                       ? 'hover:bg-gray-600 text-gray-400 hover:text-white' 
                       : 'hover:bg-gray-300 text-gray-600 hover:text-gray-900'
                   }`}
@@ -332,7 +284,8 @@ const App: React.FC = () => {
               value={activeTab.content}
               onChange={handleContentChange}
               language={activeTab.language}
-              theme={theme}
+              theme={settings.theme}
+              settings={settings}
             />
           ) : (
             <div className="flex items-center justify-center h-full">
@@ -342,7 +295,7 @@ const App: React.FC = () => {
         </main>
         
         {/* Footer */}
-        <footer className={`${theme === 'dark' ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-100 border-gray-300 text-gray-600'} p-2 border-t text-sm`}>
+        <footer className={`${settings.theme === 'dark' ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-gray-100 border-gray-300 text-gray-600'} p-2 border-t text-sm`}>
           <div className="flex items-center justify-between">
             <span>
               {activeTab ? (
