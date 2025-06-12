@@ -19,7 +19,7 @@ function createWindow(): void {
   })
 
   if (isDev()) {
-    mainWindow.loadURL('http://localhost:3000')
+    mainWindow.loadURL('http://localhost:3001')
     mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
