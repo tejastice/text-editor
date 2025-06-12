@@ -75,7 +75,7 @@ function createMenu(): void {
         { role: 'cut' },
         { role: 'copy' },
         { role: 'paste' },
-        { role: 'selectall' },
+        { role: 'selectAll' },
       ],
     },
     {
@@ -89,7 +89,7 @@ function createMenu(): void {
         { role: 'zoomIn' },
         { role: 'zoomOut' },
         { type: 'separator' },
-        { role: 'toggleFullscreen' },
+        { role: 'togglefullscreen' },
       ],
     },
   ]
